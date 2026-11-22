@@ -122,3 +122,48 @@ test results, and HTML reports are excluded from version control.
 - The tests do not assert global catalogue counts or depend on an assumed
   shared-user state. Registration uses a unique address, and checkout uses
   synthetic address and payment values.
+
+
+
+
+## CI
+
+[![Playwright Tests](https://github.com/AlikhanAbish/playwright_testing/actions/workflows/playwright.yml/badge.svg?branch=main)](https://github.com/AlikhanAbish/playwright_testing/actions/workflows/playwright.yml)
+
+**CI system:** GitHub Actions. It is built into GitHub, where the repository already lives, needs no server of its own, is free for public repositories and supports matrices for sharding.
+
+**Pipeline** (`.github/workflows/playwright.yml`):
+
+- runs on every push and pull request (and manually via `workflow_dispatch`);
+- `npm ci` with the npm cache, Chromium installed with system dependencies;
+- the full Playwright suite (no `--grep` or project filters) split into 4 shards (`--shard=i/4`) running in parallel;
+- the `merge-reports` job merges the shards' blob reports into one HTML report and one JUnit file;
+- artefacts: `playwright-report` (HTML), `test-results-N` (traces, screenshots, videos, JUnit), `junit-report`; kept for 14 days;
+- credentials are not stored in the code: `TEST_USER_EMAIL`, `TEST_USER_PASSWORD` and `INVALID_PASSWORD` come from GitHub Actions secrets.
+
+**CI settings** (`playwright.config.ts`, when `CI=true`): `forbidOnly: true`, `retries: 2`, reporters `list`, `blob`, `junit`, `trace: 'on-first-retry'`. `merge.config.ts` builds the merged HTML report and `reports/junit-merged.xml`.
+
+### Runtime
+
+| Configuration | Total run time | Run tests step (slowest shard) | Run |
+| --- | --- | --- | --- |
+| 1 job, no sharding | not measured | not measured | – |
+| 4 shards + merge | not representative (see known issue) | not representative | [run](https://github.com/AlikhanAbish/playwright_testing/actions/runs/45032477799) |
+
+Conclusion: the times cannot be compared yet, because the setup test times out (3 attempts x 60 s) before any real test runs, so the runs measure the timeout rather than the suite. With a small suite each shard also spends about a minute on setup, so sharding would bring little gain; it should be re-measured once the tests run green.
+
+### Known issue: Cloudflare challenge on GitHub runners
+
+The public site under test (`practicesoftwaretesting.com`) shows a Cloudflare "Verify you are human" challenge to GitHub-hosted runners, so `auth.setup.ts` times out waiting for the registration form (`first-name`). The failure screenshot is in the `test-results-1` artefact of the [push run](https://github.com/AlikhanAbish/playwright_testing/actions/runs/45032477799). The same tests pass locally.
+
+I did not try to bypass the protection. Instead, the workflow was changed to start the application (Practice Software Testing, Sprint 5, release 2.5) temporarily on the runner with Docker Compose and point the tests to `http://localhost:4200`; it is not copied into this repository or hosted publicly. This attempt stopped at the PHP dependency installation (`composer install`: "Could not scan for classes inside /var/www/vendor/dompdf/dompdf/lib/"). [Update this paragraph if the problem is solved, and add the run link.]
+
+### Running locally
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+CI=true npx playwright test
+```
+
+PowerShell: `$env:CI = "true"; npx playwright test; Remove-Item Env:CI`. Set `TEST_USER_EMAIL`, `TEST_USER_PASSWORD` and `INVALID_PASSWORD` first.
