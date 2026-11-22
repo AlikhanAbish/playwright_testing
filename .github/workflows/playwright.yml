@@ -53,38 +53,21 @@ jobs:
           sed -i 's/^SPRINT=.*/SPRINT=sprint5/' .env
           grep -Fxq 'SPRINT=sprint5' .env
 
-      - name: Start local Toolshop
+      - name: Start prebuilt Toolshop
         working-directory: ./toolshop
+        env:
+          SPRINT: sprint5
         run: |
-          if ! docker compose -f docker-compose.yml up -d; then
-            docker compose -f docker-compose.yml logs --no-color
+          if ! docker compose -f docker-compose.prod.yml up --pull missing -d; then
+            docker compose -f docker-compose.prod.yml logs --no-color
             exit 1
-          fi
-
-      - name: Install PHP dependencies if missing
-        working-directory: ./toolshop
-        run: |
-          api_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 http://localhost:8091/status || true)"
-          if [ ! -f sprint5/API/vendor/autoload.php ]; then
-            if [ "$api_status" = "500" ]; then
-              echo "API returned HTTP 500 and vendor/autoload.php is missing; installing Composer dependencies."
-            else
-              echo "vendor/autoload.php is missing in the fresh checkout (API HTTP $api_status); installing Composer dependencies."
-            fi
-            if ! docker compose -f docker-compose.yml run --rm composer \
-              -c "composer --no-plugins install --no-dev --optimize-autoloader \
-                --ignore-platform-req=ext-ffi && chown -R www-data /var/www && chmod 777 /var/www"; then
-              docker compose -f docker-compose.yml logs --no-color
-              exit 1
-            fi
-            docker compose -f docker-compose.yml up -d
           fi
 
       - name: Migrate and seed local database
         working-directory: ./toolshop
         run: |
-          if ! docker compose -f docker-compose.yml exec -T laravel-api php artisan migrate:fresh --seed; then
-            docker compose -f docker-compose.yml logs --no-color
+          if ! docker compose -f docker-compose.prod.yml exec -T laravel-api php artisan migrate:fresh --seed; then
+            docker compose -f docker-compose.prod.yml logs --no-color
             exit 1
           fi
 
@@ -103,7 +86,7 @@ jobs:
             done
 
             echo "::error::$name did not respond successfully at $url within 5 minutes."
-            docker compose -f docker-compose.yml logs --no-color
+            docker compose -f docker-compose.prod.yml logs --no-color
             return 1
           }
 
