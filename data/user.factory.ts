@@ -6,7 +6,7 @@ export interface User {
   dateOfBirth: string;
   country: string;
   postalCode: string;
-  houseNumber: string;
+  houseNumber: string; 
   street: string;
   city: string;
   state: string;
