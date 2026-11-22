@@ -32,8 +32,8 @@ export interface CheckoutData {
 }
 
 export const seededCustomer: Pick<User, 'email' | 'password'> = {
-  email: 'customer2@practicesoftwaretesting.com',
-  password: 'welcome01',
+  email: process.env.TEST_USER_EMAIL ?? '',
+  password: process.env.TEST_USER_PASSWORD ?? '',
 };
 
 export function createUser(): User {

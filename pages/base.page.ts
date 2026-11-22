@@ -6,7 +6,7 @@ export class BasePage {
   constructor(protected readonly page: Page) {}
 
   async navigate(path: string): Promise<void> {
-    const configuredBaseURL = process.env.BASE_URL ?? defaultBaseURL;
+    const configuredBaseURL = process.env.BASE_URL || defaultBaseURL;
     const route = configuredBaseURL.includes('/#/')
       ? `/#${path}`
       : path;
