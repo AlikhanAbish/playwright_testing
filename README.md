@@ -160,6 +160,8 @@ I did not try to bypass the protection. Instead, the workflow was changed to sta
 
 ### Running locally
 
+
+
 ```bash
 npm ci
 npx playwright install --with-deps chromium
