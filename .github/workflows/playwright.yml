@@ -38,8 +38,79 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Checkout Toolshop
+        uses: actions/checkout@v4
+        with:
+          repository: testsmith-io/practice-software-testing
+          ref: refs/tags/2.5
+          path: toolshop
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Select Toolshop sprint
+        working-directory: ./toolshop
+        run: |
+          sed -i 's/^SPRINT=.*/SPRINT=sprint5/' .env
+          grep -Fxq 'SPRINT=sprint5' .env
+
+      - name: Start local Toolshop
+        working-directory: ./toolshop
+        run: |
+          if ! docker compose -f docker-compose.yml up -d; then
+            docker compose -f docker-compose.yml logs --no-color
+            exit 1
+          fi
+
+      - name: Install PHP dependencies if missing
+        working-directory: ./toolshop
+        run: |
+          api_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 http://localhost:8091/status || true)"
+          if [ ! -f sprint5/API/vendor/autoload.php ]; then
+            if [ "$api_status" = "500" ]; then
+              echo "API returned HTTP 500 and vendor/autoload.php is missing; installing Composer dependencies."
+            else
+              echo "vendor/autoload.php is missing in the fresh checkout (API HTTP $api_status); installing Composer dependencies."
+            fi
+            if ! docker compose -f docker-compose.yml run --rm composer; then
+              docker compose -f docker-compose.yml logs --no-color
+              exit 1
+            fi
+            docker compose -f docker-compose.yml up -d
+          fi
+
+      - name: Migrate and seed local database
+        working-directory: ./toolshop
+        run: |
+          if ! docker compose -f docker-compose.yml exec -T laravel-api php artisan migrate:fresh --seed; then
+            docker compose -f docker-compose.yml logs --no-color
+            exit 1
+          fi
+
+      - name: Wait for local Toolshop
+        working-directory: ./toolshop
+        run: |
+          wait_for_url() {
+            name="$1"
+            url="$2"
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --max-time 5 "$url" -o /dev/null 2>/dev/null; then
+                echo "$name is ready at $url"
+                return 0
+              fi
+              sleep 5
+            done
+
+            echo "::error::$name did not respond successfully at $url within 5 minutes."
+            docker compose -f docker-compose.yml logs --no-color
+            return 1
+          }
+
+          wait_for_url "Toolshop UI" "http://localhost:4200/"
+          wait_for_url "Toolshop API" "http://localhost:8091/status"
+
       - name: Run Playwright tests
         env:
+          BASE_URL: http://localhost:4200
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
           INVALID_PASSWORD: ${{ secrets.INVALID_PASSWORD }}

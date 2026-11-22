@@ -8,3 +8,4 @@ all-blob-reports/
 .act-artifacts/
 .secrets
 .env
+ci-debug/
