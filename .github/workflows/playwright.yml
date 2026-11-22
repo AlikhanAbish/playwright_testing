@@ -1,3 +1,4 @@
+# Playwright test and report pipeline.
 name: Playwright Tests
 
 on:
