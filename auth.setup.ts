@@ -7,6 +7,8 @@ import { BasePage } from './pages/base.page';
 const authFile = 'playwright/.auth/user.json';
 const baseURL = process.env.BASE_URL || 'https://practicesoftwaretesting.com';
 
+test.setTimeout(60_000);
+
 test('prepare signed-in browser state', async ({
   browser,
   basePage,
