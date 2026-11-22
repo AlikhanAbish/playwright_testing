@@ -21,7 +21,7 @@ test('valid and invalid credentials produce the expected outcomes', async ({
   const invalidUser = createUser();
   await loginPage.signIn({
     email: invalidUser.email,
-    password: 'wrong123',
+    password: process.env.INVALID_PASSWORD ?? '',
   });
   await loginPage.expectInvalidCredentialsError();
 

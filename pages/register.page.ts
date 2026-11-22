@@ -16,7 +16,7 @@ export class RegisterPage extends BasePage {
     await this.page.getByTestId('last-name').fill(user.lastName);
     await this.page.getByTestId('dob').fill(user.dateOfBirth);
     await this.page.getByTestId('country').selectOption(user.country);
-    if ((process.env.BASE_URL ?? '').includes('/#/')) {
+    if ((process.env.BASE_URL || '').includes('/#/')) {
       await this.page
         .getByTestId('address')
         .fill(`${user.houseNumber} ${user.street}`);

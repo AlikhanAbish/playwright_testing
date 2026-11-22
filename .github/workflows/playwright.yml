@@ -1,0 +1,164 @@
+# Playwright test and report pipeline.
+name: Playwright Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Run the full suite once per shard.
+  test:
+    name: Tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Checkout Toolshop
+        uses: actions/checkout@v4
+        with:
+          repository: testsmith-io/practice-software-testing
+          ref: refs/tags/2.5
+          path: toolshop
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Select Toolshop sprint
+        working-directory: ./toolshop
+        run: |
+          sed -i 's/^SPRINT=.*/SPRINT=sprint5/' .env
+          grep -Fxq 'SPRINT=sprint5' .env
+
+      - name: Start prebuilt Toolshop
+        working-directory: ./toolshop
+        env:
+          SPRINT: sprint5
+        run: |
+          if ! docker compose -f docker-compose.prod.yml up --pull missing -d; then
+            docker compose -f docker-compose.prod.yml logs --no-color
+            exit 1
+          fi
+
+      - name: Migrate and seed local database
+        working-directory: ./toolshop
+        run: |
+          if ! docker compose -f docker-compose.prod.yml exec -T laravel-api php artisan migrate:fresh --seed; then
+            docker compose -f docker-compose.prod.yml logs --no-color
+            exit 1
+          fi
+
+      - name: Wait for local Toolshop
+        working-directory: ./toolshop
+        run: |
+          wait_for_url() {
+            name="$1"
+            url="$2"
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --max-time 5 "$url" -o /dev/null 2>/dev/null; then
+                echo "$name is ready at $url"
+                return 0
+              fi
+              sleep 5
+            done
+
+            echo "::error::$name did not respond successfully at $url within 5 minutes."
+            docker compose -f docker-compose.prod.yml logs --no-color
+            return 1
+          }
+
+          wait_for_url "Toolshop UI" "http://localhost:4200/"
+          wait_for_url "Toolshop API" "http://localhost:8091/status"
+
+      - name: Run Playwright tests
+        env:
+          BASE_URL: http://localhost:4200
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          INVALID_PASSWORD: ${{ secrets.INVALID_PASSWORD }}
+        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: blob-report
+          retention-days: 1
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.shardIndex }}
+          path: |
+            test-results/
+            reports/
+          retention-days: 14
+
+  merge-reports:
+    # Combine shard blobs and publish merged reports.
+    name: Merge reports
+    if: ${{ !cancelled() }}
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-report-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      - name: Merge Playwright reports
+        run: npx playwright merge-reports --config merge.config.ts ./all-blob-reports
+
+      - name: Upload playwright report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 14
+
+      - name: Upload JUnit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-report
+          path: reports/junit-merged.xml
+          retention-days: 14
