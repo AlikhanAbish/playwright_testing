@@ -71,8 +71,9 @@ jobs:
             else
               echo "vendor/autoload.php is missing in the fresh checkout (API HTTP $api_status); installing Composer dependencies."
             fi
-            if ! docker compose -f docker-compose.yml run --rm \
-              -e COMPOSER_MAX_PARALLEL_HTTP=1 composer; then
+            if ! docker compose -f docker-compose.yml run --rm composer \
+              -c "composer --no-plugins install --no-dev --optimize-autoloader \
+                --ignore-platform-req=ext-ffi && chown -R www-data /var/www && chmod 777 /var/www"; then
               docker compose -f docker-compose.yml logs --no-color
               exit 1
             fi
